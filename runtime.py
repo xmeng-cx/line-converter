@@ -45,9 +45,11 @@ def outbound(node):
 
 def core_config(state):
     nodes = {n['id']: n for s in state['subscriptions'] for n in s.get('nodes', [])}
+    subscriptions = {s['id']: s for s in state['subscriptions']}
     rules = []
     dns_rules = []
     dns_servers = [{'type': 'local', 'tag': 'local-dns'},
+                   {'type': 'udp', 'tag': 'direct-dns', 'server': os.environ.get('LINE_DIRECT_DNS', '223.5.5.5'), 'routing_mark': MARK},
                    {'type': 'fakeip', 'tag': 'fakeip', 'inet4_range': '198.19.0.0/16', 'inet6_range': 'fc00:66::/48'}]
     for node in nodes.values():
         dns_servers.append({'type': 'https', 'tag': 'dns-' + node['id'], 'server': 'cloudflare-dns.com',
@@ -55,15 +57,26 @@ def core_config(state):
     for a in state['accounts']:
         if a['enabled'] and a.get('node_id') in nodes:
             rules.append({'inbound': ['pptp'], 'source_ip_cidr': [a['ip'] + '/32'], 'port': 53, 'action': 'hijack-dns'})
+            for direct in subscriptions.get(a['subscription_id'], {}).get('direct_rules', []):
+                scope = {'inbound': ['pptp'], 'source_ip_cidr': [a['ip'] + '/32']}
+                match = direct['match']
+                if 'ip_cidr' in match and not direct.get('no_resolve', False):
+                    rules.append({**scope, 'action': 'resolve', 'server': 'direct-dns'})
+                rules.append({'type': 'logical', 'mode': 'and', 'rules': [scope, match] if match else [scope],
+                              'action': 'route', 'outbound': 'subscription-direct'})
             rules.append({'inbound': ['pptp'], 'source_ip_cidr': [a['ip'] + '/32'], 'action': 'route', 'outbound': a['node_id']})
             dns_rules.append({'source_ip_cidr': [a['ip'] + '/32'], 'query_type': ['A', 'AAAA'], 'action': 'route', 'server': 'fakeip'})
+            for direct in subscriptions.get(a['subscription_id'], {}).get('direct_rules', []):
+                match = direct['match']
+                if not match or set(match) <= {'domain', 'domain_suffix', 'domain_keyword'}:
+                    dns_rules.append({**match, 'source_ip_cidr': [a['ip'] + '/32'], 'action': 'route', 'server': 'direct-dns'})
             dns_rules.append({'source_ip_cidr': [a['ip'] + '/32'], 'action': 'route', 'server': 'dns-' + a['node_id']})
     rules.append({'action': 'reject'})
     return {'log': {'level': 'warn'},
             'dns': {'servers': dns_servers, 'rules': dns_rules, 'final': 'local-dns'},
             'experimental': {'cache_file': {'enabled': True, 'path': str(DATA / 'dns-cache.db'), 'store_fakeip': True}},
             'inbounds': [{'tag': 'pptp', 'type': 'tproxy', 'listen': '0.0.0.0', 'listen_port': 16600}],
-            'outbounds': [outbound(n) for n in nodes.values()],
+            'outbounds': [{'type': 'direct', 'tag': 'subscription-direct', 'routing_mark': MARK, 'domain_resolver': 'direct-dns'}] + [outbound(n) for n in nodes.values()],
             'route': {'default_mark': MARK, 'default_domain_resolver': 'local-dns', 'rules': rules}}
 
 

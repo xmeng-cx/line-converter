@@ -43,7 +43,7 @@ def preview(payload):
     text = str(payload.get('text', ''))
     if not text:
         text = fetch(url, runtime.MARK if runtime.LIVE else 0)
-    nodes, errors = parse_subscription(text)
+    nodes, errors, direct_rules, rule_warnings = parse_subscription(text, include_rules=True)
     with lock:
         state = store.read()
         sub_id = payload.get('id') or uuid.uuid4().hex
@@ -55,7 +55,8 @@ def preview(payload):
                    interval=max(0, min(10080, int(payload.get('interval', 0)))))
         proposed, added = reconcile(state, sub_id, nodes)
         proposed_sub = next(s for s in proposed['subscriptions'] if s['id'] == sub_id)
-        proposed_sub.update(last_update=time.time(), last_error='', skipped=errors)
+        proposed_sub.update(last_update=time.time(), last_error='', skipped=errors,
+                            direct_rules=direct_rules, rule_warnings=rule_warnings)
         token = uuid.uuid4().hex
         now = time.time()
         for key in list(previews):
@@ -65,7 +66,7 @@ def preview(payload):
             previews.pop(next(iter(previews)))
         previews[token] = {'expires': now + 600, 'state': proposed, 'revision': state['revision']}
         return {'token': token, 'nodes': [{'name': n['name'], 'type': n['type']} for n in nodes],
-                'count': len(nodes), 'added_accounts': added,
+                'count': len(nodes), 'added_accounts': added, 'direct_rule_count': len(direct_rules), 'rule_warnings': rule_warnings,
                 'unbound_accounts': sum(not a.get('node_id') for a in proposed['accounts']), 'skipped': errors}
 
 

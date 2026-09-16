@@ -68,6 +68,12 @@ sudo bash install.sh
 
 ## 支持的订阅
 
+订阅中的 `DIRECT` 规则会一同导入，先于账号默认代理线路匹配，从 Armbian 本机网络出口直连。规则按账号所属订阅隔离；停用或无可用线路的账号仍拒绝转发。刷新订阅会替换规则，删除的规则不继续生效，账号和密码不变。控制台显示直连规则数量、明细及不支持的规则提示。
+
+支持 Clash 的 `DOMAIN`、`DOMAIN-SUFFIX`、`DOMAIN-KEYWORD`、`IP-CIDR`、`IP-CIDR6`、`MATCH,DIRECT`，保留 IP 规则的 `no-resolve`；支持 sing-box 指向 direct 出站的基本域名/IP/端口/网络规则。复杂逻辑、GEOIP/GEOSITE、外部 RULE-SET 暂不展开，会显示提示。仅导入直连规则，其他策略仍使用账号所绑定的线路。
+
+直连域名通过独立 DNS 解析（默认 `223.5.5.5`，可在 `/etc/line-converter.env` 设置 `LINE_DIRECT_DNS`）。A/AAAA 继续使用 FakeIP 保持域名识别，命中直连后由本机解析连接。直连出站使用专用路由标记绕过现有 TUN 代理。订阅中允许的内网、环回地址也按其直连规则生效。
+
 - 原始 `hy2://`、`hysteria2://`、`socks5://`、`socks://` 链接列表。
 - Base64 编码链接列表。
 - Clash YAML 的 `proxies`。

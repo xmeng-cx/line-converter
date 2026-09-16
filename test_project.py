@@ -69,6 +69,40 @@ class ProjectTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 nodes(text)
 
+    def test_subscription_direct_rules(self):
+        text = '''proxies:
+ - {name: A, type: socks5, server: a.example, port: 1080}
+rules:
+ - DOMAIN,direct.example,DIRECT
+ - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+ - IP-CIDR6,fc00::/7,DIRECT,no-resolve
+ - GEOIP,CN,DIRECT
+ - MATCH,Proxy
+'''
+        ns, errors, direct, warnings = parse_subscription(text, include_rules=True)
+        self.assertEqual(len(direct), 3)
+        self.assertEqual(len(warnings), 1)
+        self.assertTrue(direct[1]['no_resolve'])
+        self.state, _ = reconcile(self.state, 'sub', ns)
+        self.state['subscriptions'][0]['direct_rules'] = direct
+        config = core_config(self.state)
+        rules = config['route']['rules']
+        self.assertEqual(rules[0]['action'], 'hijack-dns')
+        self.assertEqual(rules[1]['outbound'], 'subscription-direct')
+        self.assertEqual(rules[1]['rules'][0]['source_ip_cidr'], ['10.66.0.2/32'])
+        self.assertEqual(rules[4]['outbound'], ns[0]['id'])
+        self.state['accounts'][0]['enabled'] = False
+        self.assertEqual(core_config(self.state)['route']['rules'], [{'action': 'reject'}])
+
+    def test_rule_refresh_removes_old_and_accounts_stay(self):
+        self.sync('hy2://a@a.example#A')
+        old = copy.deepcopy(self.state['accounts'])
+        self.state['subscriptions'][0]['direct_rules'] = [{'match': {'domain': ['old.example']}, 'no_resolve': True}]
+        self.sync('hy2://a@a.example#A')
+        self.state['subscriptions'][0]['direct_rules'] = []
+        self.assertEqual(self.state['accounts'], old)
+        self.assertNotIn('old.example', str(core_config(self.state)))
+
 
 if __name__ == '__main__':
     unittest.main()

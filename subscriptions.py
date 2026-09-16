@@ -5,6 +5,7 @@ import json
 from urllib.parse import urlsplit, parse_qs, unquote
 
 import yaml
+from direct_rules import parse_direct_rules
 
 
 def truth(value):
@@ -76,7 +77,7 @@ def parse_link(line):
                              'obfs': q.get('obfs', ''), 'obfs-password': q.get('obfs-password', '')}))
 
 
-def parse_subscription(text):
+def parse_subscription(text, include_rules=False):
     text = text.strip().lstrip('\ufeff')
     if len(text) > 4 * 1024 * 1024:
         raise ValueError('订阅超过 4 MB 限制')
@@ -86,6 +87,7 @@ def parse_subscription(text):
         except Exception:
             raise ValueError('无法识别订阅格式') from None
     nodes, errors = [], []
+    direct_rules, rule_warnings = [], []
     if text.startswith(('{', '[')) or 'proxies:' in text:
         try:
             document = yaml.safe_load(text)
@@ -94,7 +96,10 @@ def parse_subscription(text):
                 raise ValueError()
         except Exception:
             raise ValueError('订阅 JSON/YAML 格式无效') from None
+        direct_rules, rule_warnings = parse_direct_rules(document)
         for i, entry in enumerate(entries):
+            if isinstance(entry, dict) and entry.get('type') == 'direct':
+                continue
             try:
                 nodes.append(normalize(entry))
             except Exception as exc:
@@ -117,4 +122,6 @@ def parse_subscription(text):
         raise ValueError('订阅没有可用的 HY2 / SOCKS5 节点，原配置已保留')
     if len(nodes) > 2000:
         raise ValueError('单份订阅最多支持 2000 条线路')
+    if include_rules:
+        return nodes, errors, direct_rules, rule_warnings
     return nodes, errors
