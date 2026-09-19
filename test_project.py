@@ -1,8 +1,12 @@
 import base64
 import copy
 import unittest
+import sqlite3
+import tempfile
+from unittest.mock import patch
 
 from model import initial_state, reconcile
+from model import Store
 from runtime import core_config, secrets
 from subscriptions import parse_subscription
 
@@ -12,6 +16,48 @@ def nodes(text):
 
 
 class ProjectTests(unittest.TestCase):
+    def test_database_connections_closed_without_garbage_collection(self):
+        connections = []
+        connect = sqlite3.connect
+
+        class TrackedConnection(sqlite3.Connection):
+            closed = False
+
+            def close(self):
+                self.closed = True
+                super().close()
+
+        def tracked(*args, **kwargs):
+            connection = connect(*args, factory=TrackedConnection, **kwargs)
+            connections.append(connection)
+            return connection
+
+        with tempfile.TemporaryDirectory() as folder:
+            with patch('model.sqlite3.connect', tracked):
+                store = Store(folder + '/test.db')
+                for _ in range(100):
+                    store.write(initial_state())
+                    self.assertEqual(store.read()['accounts'], [])
+                self.assertEqual(len(connections), 201)
+                self.assertTrue(all(c.closed for c in connections))
+
+    def test_console_restart_keeps_healthy_core(self):
+        import runtime
+        from pathlib import Path
+        from types import SimpleNamespace
+        import json
+        state = initial_state()
+        with tempfile.TemporaryDirectory() as folder, patch.object(runtime, 'DATA', Path(folder)), patch.object(runtime, 'LIVE', True):
+            Path(folder, 'core.json').write_text(json.dumps(runtime.core_config(state)), encoding='utf-8')
+            Path(folder, 'chap-secrets').write_text(runtime.secrets(state), encoding='utf-8')
+            Path(folder, 'accel.conf').write_text(runtime.accel_config(), encoding='utf-8')
+            with patch.object(runtime, 'run', return_value=SimpleNamespace(returncode=0)), patch.object(runtime, 'apply') as apply:
+                runtime.ensure_started(state)
+                apply.assert_not_called()
+                Path(folder, 'chap-secrets').write_text('stale', encoding='utf-8')
+                runtime.ensure_started(state)
+                apply.assert_called_once_with(state)
+
     def setUp(self):
         self.state = initial_state()
         self.state['subscriptions'] = [{'id': 'sub', 'nodes': []}]

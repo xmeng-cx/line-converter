@@ -213,7 +213,7 @@ def scheduler():
 
 if __name__ == '__main__':
     if runtime.LIVE:
-        runtime.apply(store.read())
+        runtime.ensure_started(store.read())
     threading.Thread(target=scheduler, daemon=True).start()
     server = ThreadingHTTPServer((os.environ.get('LINE_BIND', '127.0.0.1'), int(os.environ.get('LINE_PORT', '8088'))), Handler)
     print('线路转换控制台已启动', flush=True)

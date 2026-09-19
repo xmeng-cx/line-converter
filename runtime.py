@@ -139,6 +139,21 @@ def secrets(state):
         for a in state['accounts'] if a['enabled'] and a.get('node_id'))
 
 
+def ensure_started(state):
+    """A console restart must not interrupt healthy, already configured tunnels."""
+    if LIVE:
+        try:
+            configured = (json.loads((DATA / 'core.json').read_text('utf-8')) == core_config(state)
+                          and (DATA / 'chap-secrets').read_text('utf-8') == secrets(state)
+                          and (DATA / 'accel.conf').read_text('utf-8') == accel_config())
+            if configured and all(run(['systemctl', 'is-active', '--quiet', service], check=False).returncode == 0
+                                  for service in ('line-converter-core', 'line-converter-pptp')):
+                return
+        except (OSError, ValueError):
+            pass
+    apply(state)
+
+
 def apply(state):
     DATA.mkdir(parents=True, exist_ok=True)
     config = json.dumps(core_config(state), ensure_ascii=False, indent=2)

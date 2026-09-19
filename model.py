@@ -3,6 +3,7 @@ import copy
 import ipaddress
 import json
 import sqlite3
+from contextlib import closing
 
 PASSWORD = '123456'
 
@@ -71,14 +72,14 @@ def reconcile(state, sub_id, nodes):
 class Store:
     def __init__(self, path):
         self.path = path
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute('CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)')
 
     def read(self):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             row = db.execute('SELECT data FROM state WHERE id=1').fetchone()
         return json.loads(row[0]) if row else initial_state()
 
     def write(self, state):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('INSERT OR REPLACE INTO state VALUES (1, ?)', (json.dumps(state, ensure_ascii=False),))
