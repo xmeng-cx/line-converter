@@ -12,6 +12,11 @@ def initial_state():
     return {'subscriptions': [], 'accounts': [], 'next_account': 1, 'events': [], 'revision': 0}
 
 
+def free_account_number(state):
+    used = {a['id'] for a in state['accounts']}
+    return next(n for n in range(1, 65002) if n not in used)
+
+
 def reconcile(state, sub_id, nodes):
     state = copy.deepcopy(state)
     sub = next(s for s in state['subscriptions'] if s['id'] == sub_id)
@@ -49,14 +54,14 @@ def reconcile(state, sub_id, nodes):
         if available:
             account = available.pop(0)
         else:
-            number = state['next_account']
+            number = free_account_number(state)
             if number > 65000:
                 raise ValueError('账号地址池已满')
             account = {'id': number, 'username': 'vpn' + str(number),
                        'ip': str(ipaddress.IPv4Address('10.66.0.1') + number),
                        'subscription_id': sub_id, 'enabled': True, 'manual': False}
-            state['next_account'] += 1
             state['accounts'].append(account)
+            state['next_account'] = free_account_number(state)
             owned.append(account)
             added += 1
         account['slot_id'] = node['id']
@@ -76,13 +81,12 @@ def delete_subscription(state, sub_id):
         raise ValueError('订阅不存在或已经删除')
     removed = {n['id'] for n in sub.get('nodes', [])}
     state['subscriptions'] = [s for s in state['subscriptions'] if s['id'] != sub_id]
+    state['accounts'] = [a for a in state['accounts'] if a.get('subscription_id') != sub_id]
     for account in state['accounts']:
-        if account.get('subscription_id') == sub_id:
-            account['subscription_id'] = None
-            account['slot_id'] = None
         if account.get('node_id') in removed:
             account['node_id'] = None
             account['manual'] = False
+    state['next_account'] = free_account_number(state)
     return state, sub['name']
 
 

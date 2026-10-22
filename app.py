@@ -154,8 +154,20 @@ class Handler(BaseHTTPRequestHandler):
                 apply_preview(payload['token'])
             elif path == '/api/subscription/delete':
                 with lock:
-                    state, name = delete_subscription(store.read(), payload['id'])
-                    commit(state, '已删除订阅：' + name + '；保留账号，清除失效线路')
+                    old = store.read()
+                    state, name = delete_subscription(old, payload['id'])
+                    removed_users = {a['username'] for a in old['accounts'] if a['subscription_id'] == payload['id']}
+                    for session in runtime.sessions():
+                        if session['username'] in removed_users:
+                            runtime.disconnect(session['username'])
+                    if runtime.LIVE:
+                        for _ in range(10):
+                            if not any(s['username'] in removed_users for s in runtime.sessions()):
+                                break
+                            time.sleep(.2)
+                        else:
+                            raise ValueError('关联会话尚未断开，请稍后重试删除')
+                    commit(state, '已删除订阅：' + name + '；同时删除关联账号和线路')
             elif path == '/api/subscription':
                 with lock:
                     sub = next(s for s in store.read()['subscriptions'] if s['id'] == payload['id'])

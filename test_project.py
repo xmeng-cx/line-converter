@@ -16,7 +16,7 @@ def nodes(text):
 
 
 class ProjectTests(unittest.TestCase):
-    def test_delete_subscription_keeps_accounts_and_other_bindings(self):
+    def test_delete_subscription_removes_owned_accounts_and_reuses_numbers(self):
         state = initial_state()
         state['subscriptions'] = [{'id': 'a', 'name': 'A', 'nodes': []}, {'id': 'b', 'name': 'B', 'nodes': []}]
         state, _ = reconcile(state, 'a', nodes('hy2://p@a.example#A'))
@@ -25,15 +25,18 @@ class ProjectTests(unittest.TestCase):
         result, name = delete_subscription(state, 'a')
         self.assertEqual(state, original)
         self.assertEqual(name, 'A')
-        self.assertEqual(result['next_account'], state['next_account'])
-        self.assertIsNone(result['accounts'][0]['node_id'])
-        self.assertIsNone(result['accounts'][0]['subscription_id'])
-        self.assertEqual(result['accounts'][1], state['accounts'][1])
+        self.assertEqual(result['next_account'], 1)
+        self.assertEqual(result['accounts'], [state['accounts'][1]])
         self.assertNotIn('vpn1', secrets(result))
         self.assertIn('vpn2', secrets(result))
         result, _ = delete_subscription(result, 'b')
         self.assertEqual(core_config(result)['route']['rules'], [{'action': 'reject'}])
-        self.assertEqual(len(result['accounts']), 2)
+        self.assertEqual(result['accounts'], [])
+        self.assertEqual(result['next_account'], 1)
+        result['subscriptions'].append({'id': 'c', 'name': 'C', 'nodes': []})
+        result, _ = reconcile(result, 'c', nodes('hy2://p@c.example#C'))
+        self.assertEqual(result['accounts'][0]['username'], 'vpn1')
+        self.assertEqual(len(result['accounts']), 1)
         with self.assertRaises(ValueError):
             delete_subscription(result, 'b')
 
