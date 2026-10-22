@@ -6,7 +6,7 @@ import tempfile
 from unittest.mock import patch
 
 from model import initial_state, reconcile
-from model import Store
+from model import Store, delete_subscription
 from runtime import core_config, secrets
 from subscriptions import parse_subscription
 
@@ -16,6 +16,27 @@ def nodes(text):
 
 
 class ProjectTests(unittest.TestCase):
+    def test_delete_subscription_keeps_accounts_and_other_bindings(self):
+        state = initial_state()
+        state['subscriptions'] = [{'id': 'a', 'name': 'A', 'nodes': []}, {'id': 'b', 'name': 'B', 'nodes': []}]
+        state, _ = reconcile(state, 'a', nodes('hy2://p@a.example#A'))
+        state, _ = reconcile(state, 'b', nodes('hy2://p@b.example#B'))
+        original = copy.deepcopy(state)
+        result, name = delete_subscription(state, 'a')
+        self.assertEqual(state, original)
+        self.assertEqual(name, 'A')
+        self.assertEqual(result['next_account'], state['next_account'])
+        self.assertIsNone(result['accounts'][0]['node_id'])
+        self.assertIsNone(result['accounts'][0]['subscription_id'])
+        self.assertEqual(result['accounts'][1], state['accounts'][1])
+        self.assertNotIn('vpn1', secrets(result))
+        self.assertIn('vpn2', secrets(result))
+        result, _ = delete_subscription(result, 'b')
+        self.assertEqual(core_config(result)['route']['rules'], [{'action': 'reject'}])
+        self.assertEqual(len(result['accounts']), 2)
+        with self.assertRaises(ValueError):
+            delete_subscription(result, 'b')
+
     def test_database_connections_closed_without_garbage_collection(self):
         connections = []
         connect = sqlite3.connect

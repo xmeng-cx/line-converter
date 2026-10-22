@@ -69,6 +69,23 @@ def reconcile(state, sub_id, nodes):
     return state, added
 
 
+def delete_subscription(state, sub_id):
+    state = copy.deepcopy(state)
+    sub = next((s for s in state['subscriptions'] if s['id'] == sub_id), None)
+    if sub is None:
+        raise ValueError('订阅不存在或已经删除')
+    removed = {n['id'] for n in sub.get('nodes', [])}
+    state['subscriptions'] = [s for s in state['subscriptions'] if s['id'] != sub_id]
+    for account in state['accounts']:
+        if account.get('subscription_id') == sub_id:
+            account['subscription_id'] = None
+            account['slot_id'] = None
+        if account.get('node_id') in removed:
+            account['node_id'] = None
+            account['manual'] = False
+    return state, sub['name']
+
+
 class Store:
     def __init__(self, path):
         self.path = path

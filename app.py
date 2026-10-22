@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 import runtime
 from fetcher import fetch
-from model import Store, PASSWORD, reconcile
+from model import Store, PASSWORD, reconcile, delete_subscription
 from subscriptions import parse_subscription
 
 runtime.DATA.mkdir(parents=True, exist_ok=True)
@@ -48,6 +48,8 @@ def preview(payload):
         state = store.read()
         sub_id = payload.get('id') or uuid.uuid4().hex
         sub = next((s for s in state['subscriptions'] if s['id'] == sub_id), None)
+        if payload.get('id') and sub is None:
+            raise ValueError('订阅已删除，请刷新页面')
         if not sub:
             sub = {'id': sub_id, 'nodes': []}
             state['subscriptions'].append(sub)
@@ -150,6 +152,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, preview(payload))
             if path == '/api/apply':
                 apply_preview(payload['token'])
+            elif path == '/api/subscription/delete':
+                with lock:
+                    state, name = delete_subscription(store.read(), payload['id'])
+                    commit(state, '已删除订阅：' + name + '；保留账号，清除失效线路')
             elif path == '/api/subscription':
                 with lock:
                     sub = next(s for s in store.read()['subscriptions'] if s['id'] == payload['id'])
@@ -205,7 +211,9 @@ def scheduler():
             except Exception:
                 with lock:
                     state = store.read()
-                    current = next(s for s in state['subscriptions'] if s['id'] == sub['id'])
+                    current = next((s for s in state['subscriptions'] if s['id'] == sub['id']), None)
+                    if current is None:
+                        continue
                     current['last_error'] = '自动更新失败，保留原配置'
                     event(state, current['name'] + '：自动更新失败')
                     store.write(state)
