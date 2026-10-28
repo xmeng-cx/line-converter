@@ -49,11 +49,13 @@ fi
 cat > /etc/line-converter.env <<EOF
 LINE_LIVE=1
 LINE_DATA=$APP_DIR/data
-LINE_BIND=$LAN_IP
-LINE_LAN_IP=$LAN_IP
+LINE_BIND=0.0.0.0
 LINE_PORT=8088
 LINE_CORE=$CORE_BINARY
 EOF
+if [[ -n "${LINE_LAN_IP:-}" ]]; then
+    echo "LINE_LAN_IP=$LINE_LAN_IP" >> /etc/line-converter.env
+fi
 chmod 600 /etc/line-converter.env
 cat > /etc/systemd/system/line-converter-network.service <<EOF
 [Unit]

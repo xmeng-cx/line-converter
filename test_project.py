@@ -16,6 +16,14 @@ def nodes(text):
 
 
 class ProjectTests(unittest.TestCase):
+    def test_dhcp_address_does_not_pin_pptp_listener(self):
+        import runtime
+        with patch.dict('os.environ', {}, clear=True), patch.object(
+            runtime.subprocess, 'check_output', return_value='1.1.1.1 via 192.168.1.1 dev enp2s0 src 192.168.1.9\n'
+        ):
+            self.assertEqual(runtime.lan_ip(), '192.168.1.9')
+        self.assertIn('bind=0.0.0.0', runtime.accel_config())
+
     def test_delete_subscription_removes_owned_accounts_and_reuses_numbers(self):
         state = initial_state()
         state['subscriptions'] = [{'id': 'a', 'name': 'A', 'nodes': []}, {'id': 'b', 'name': 'B', 'nodes': []}]

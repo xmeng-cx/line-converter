@@ -23,7 +23,7 @@ gh api repos/xmeng-cx/line-converter/contents/bootstrap.sh -H 'Accept: applicati
 bash <(curl -fsSL https://raw.githubusercontent.com/xmeng-cx/line-converter/main/bootstrap.sh)
 ```
 
-指定局域网 IP（多网卡、安装了其他 TUN 代理时建议指定）：
+指定固定局域网 IP（仅多网卡或固定地址时需要）：
 
 ```bash
 export LINE_LAN_IP=192.168.1.144
@@ -116,7 +116,7 @@ journalctl -u line-converter -u line-converter-core -n 80 --no-pager
 tail -n 80 /opt/line-converter/data/accel.log
 ```
 
-重新运行安装命令可更新程序，保留 `data` 中的账号与订阅。修改设备 IP 后重新指定 `LINE_LAN_IP` 运行安装，并重启 `line-converter-pptp`。开机自动启动，异常退出由 systemd 拉起。
+重新运行安装命令可更新程序，保留 `data` 中的账号与订阅。默认从当前默认路由检测局域网 IP，控制台和 PPTP 监听所有 IPv4 地址，DHCP 更换地址后重启仍可正常启动。如显式指定了 `LINE_LAN_IP`，地址改变时需更新该配置并重启服务。开机自动启动，异常退出由 systemd 拉起。
 
 备份时停止控制台并备份整个 data 目录；恢复后重启控制台。不要将 data 目录、订阅令牌或 SSH 凭据提交到 GitHub。本项目不保存部署用的 SSH 凭据。
 

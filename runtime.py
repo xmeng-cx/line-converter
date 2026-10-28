@@ -11,7 +11,19 @@ ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('LINE_DATA', str(ROOT / 'data')))
 CORE = os.environ.get('LINE_CORE', '/opt/line-converter/bin/sing-box')
 LIVE = os.environ.get('LINE_LIVE', '0') == '1'
-LAN = os.environ.get('LINE_LAN_IP', '192.168.1.144')
+def lan_ip():
+    """Use the current default-route IPv4 address unless explicitly pinned."""
+    if os.environ.get('LINE_LAN_IP'):
+        return os.environ['LINE_LAN_IP']
+    try:
+        route = subprocess.check_output(['ip', '-4', 'route', 'get', '1.1.1.1'], text=True)
+        parts = route.split()
+        return parts[parts.index('src') + 1]
+    except (OSError, subprocess.CalledProcessError, ValueError, IndexError):
+        return '192.168.1.144'
+
+
+LAN = lan_ip()
 MARK = 16602
 
 
@@ -111,7 +123,7 @@ lcp-echo-interval=20
 lcp-echo-failure=3
 
 [pptp]
-bind={LAN}
+bind=0.0.0.0
 verbose=0
 ifname=lc%d
 
